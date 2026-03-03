@@ -75,18 +75,65 @@ uint8_t CDC_RX_Buffer_Compare[64];
 char CDC_RX_Data[2048];
 bool flag=0;
 
-
-
-
 typedef enum CDCState {
   CDC_STATE_IDLE = 0,
   CDC_SEND,
   CDC_RECEIVE,
 }  CDC_StateTypedef;
-
 CDC_StateTypedef CDC_STATE = CDC_STATE_IDLE;
-
 uint8_t i=0;
+
+void RelaySet(int* Band)//relék beállítása
+{
+switch(*Band)
+	{
+	case(7):{
+		HAL_GPIO_WritePin(OFF14_GPIO_Port, OFF14_Pin, 1);
+		HAL_GPIO_WritePin(OFF21_GPIO_Port, OFF21_Pin, 1);
+		HAL_GPIO_WritePin(OFF28_GPIO_Port, OFF28_Pin, 1);
+		HAL_GPIO_WritePin(ON7_GPIO_Port, ON7_Pin, 1);
+		HAL_Delay(500);
+		break;
+		}
+	case(14):{
+		HAL_GPIO_WritePin(OFF7_GPIO_Port, OFF7_Pin, 1);
+		HAL_GPIO_WritePin(OFF21_GPIO_Port, OFF21_Pin, 1);
+		HAL_GPIO_WritePin(OFF28_GPIO_Port, OFF28_Pin, 1);
+		HAL_GPIO_WritePin(ON14_GPIO_Port, ON14_Pin, 1);
+		HAL_Delay(500);
+		break;
+		}
+	case(21):{
+		HAL_GPIO_WritePin(OFF14_GPIO_Port, OFF14_Pin, 1);
+		HAL_GPIO_WritePin(OFF7_GPIO_Port, OFF7_Pin, 1);
+		HAL_GPIO_WritePin(OFF28_GPIO_Port, OFF28_Pin, 1);
+		HAL_GPIO_WritePin(ON21_GPIO_Port, ON21_Pin, 1);
+		HAL_Delay(500);
+		break;
+		}
+	case(28):{
+		HAL_GPIO_WritePin(OFF14_GPIO_Port, OFF14_Pin, 1);
+		HAL_GPIO_WritePin(OFF21_GPIO_Port, OFF21_Pin, 1);
+		HAL_GPIO_WritePin(OFF7_GPIO_Port, OFF7_Pin, 1);
+		HAL_GPIO_WritePin(ON28_GPIO_Port, ON28_Pin, 1);
+		HAL_Delay(500);
+		break;
+		}
+
+	}
+}
+void RelayOff(void)
+{
+	HAL_GPIO_WritePin(OFF7_GPIO_Port, OFF7_Pin, 0);
+	HAL_GPIO_WritePin(ON7_GPIO_Port, ON7_Pin, 0);
+	HAL_GPIO_WritePin(OFF14_GPIO_Port, OFF14_Pin, 0);
+	HAL_GPIO_WritePin(ON14_GPIO_Port, ON14_Pin, 0);
+	HAL_GPIO_WritePin(ON21_GPIO_Port, ON21_Pin, 0);
+	HAL_GPIO_WritePin(OFF21_GPIO_Port, OFF21_Pin, 0);
+	HAL_GPIO_WritePin(ON28_GPIO_Port, ON28_Pin, 0);
+	HAL_GPIO_WritePin(OFF28_GPIO_Port, OFF28_Pin, 0);
+
+}
 
 uint8_t int_to_bcd(uint8_t value)
 {
@@ -127,12 +174,18 @@ HAL_Delay(500);
 		  sprintf(buf, " %d%d%d%d\r\n", INT[0],INT[1],INT[2],INT[3]);//itt elhagyjuk a 3-ast és szépen összefűzzük a bullshit számokat egybe
 		  int number = atoi(buf);//ez lesz amiből feltételt képzünk, és itt már egy számunk van ami a freki
 //		  HAL_UART_Transmit(&huart3,(uint8_t *)buf, strlen(buf), 100);// ki a pc felé
+
+		  if (number<72000)RelaySet((int*)7);
+		  if (number>72000 && number<144000)RelaySet((int*)14);
+		  if (number>144000 && number<220000)RelaySet((int*)21);
+		  if (number>220000)RelaySet((int*)28);
+		  RelayOff();
+
 		  if (flag==1){
 			  CDC_STATE = CDC_SEND;
 		  }else{
 			  CDC_STATE = CDC_STATE_IDLE;
 		  }
-
 		  break;
 	}
 	case CDC_SEND:
@@ -189,13 +242,23 @@ int main(void)
   MX_GPIO_Init();
   MX_USB_HOST_Init();
   /* USER CODE BEGIN 2 */
-
+  printf("Hello ITM \n");
+  flag=1;//initial reading
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  HAL_Delay(50);
+	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+      if (hUsbHostFS.pActiveClass->Init == USBH_OK){HAL_Delay(500);}//ha csatlakoztunk, akkor csak 500ms enként olvassunk
+	  flag=1;//continous reading
+	  MX_USB_HOST_Process();
+	  if (Appli_state == APPLICATION_READY)
+	    {
+	    	CDC_HANDLE();
+	    }
     /* USER CODE END WHILE */
     MX_USB_HOST_Process();
 
@@ -265,12 +328,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15|ON7_Pin|OFF14_Pin|ON14_Pin
+                          |OFF21_Pin|ON21_Pin|OFF28_Pin|ON28_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(OFF7_GPIO_Port, OFF7_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
@@ -279,12 +347,31 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  /*Configure GPIO pin : PA0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PB15 ON7_Pin OFF14_Pin ON14_Pin
+                           OFF21_Pin ON21_Pin OFF28_Pin ON28_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_15|ON7_Pin|OFF14_Pin|ON14_Pin
+                          |OFF21_Pin|ON21_Pin|OFF28_Pin|ON28_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : OFF7_Pin */
+  GPIO_InitStruct.Pin = OFF7_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(OFF7_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -295,13 +382,12 @@ static void MX_GPIO_Init(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {//gomb
 
-  if(GPIO_Pin == GPIO_PIN_13) {
+  if(GPIO_Pin == GPIO_PIN_0) {
 	  flag=1;
 	 // CDC_STATE = CDC_SEND;
 
 
   }}
-
 __attribute__((weak)) int _write(int file, char *ptr, int len)
 {
   (void)file;
@@ -313,6 +399,7 @@ __attribute__((weak)) int _write(int file, char *ptr, int len)
   }
   return len;
 }
+
 /* USER CODE END 4 */
 
 /**
